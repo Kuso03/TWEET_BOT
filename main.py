@@ -34,8 +34,8 @@ from selenium.common.exceptions import TimeoutException, InvalidSessionIdExcepti
 #########################
 # KONFIGURASI UTAMA
 #########################
-MAX_PAGES_PER_SITE = 7
-DELAY_TWEET_RANGE = (6, 15)
+MAX_PAGES_PER_SITE = 10
+DELAY_TWEET_RANGE = (10, 30)
 TWEETS_BEFORE_HOME = 3
 
 OUTPUT_DIR = pathlib.Path("./data")
@@ -48,6 +48,7 @@ CHROME_PROFILE_DIR.mkdir(exist_ok=True)
 HOME_TWEET_FILE = pathlib.Path("./home_tweet.txt")
 
 CATEGORIES: List[str] = [
+    "https://tatarapilaundry.com/category/blog/",
     "https://villapermatagroup.com/category/artikel",
     "https://batikputrabengawan.co.id/category/batik/",
     "https://www.altembaga.com/category/artikel/",
@@ -64,8 +65,8 @@ CATEGORIES: List[str] = [
     "https://batikestujaya.com/category/artikel/",
     "https://khattabatik.com/category/artikel",
     "https://deonkraft.com/category/artikel/",
-    "https://tatarapilaundry.com/category/blog/",
-    "https://alphenwear.com/category/artikel/", # <-- DIKEMBALIKAN KE SINI
+    "https://alphenwear.com/category/artikel/",
+    "https://cvmac.id/category/blog/", # <-- DIKEMBALIKAN KE SINI
 ]
 
 LOAD_MORE_DOMAINS: Set[str] = {
@@ -301,14 +302,44 @@ def wait_home_ready(driver: webdriver.Chrome, timeout: int = 60):
 def find_home_textbox(driver: webdriver.Chrome):
     for by, sel in HOME_TEXTBOX_SELECTORS:
         try:
-            box = WebDriverWait(driver, 5).until(EC.element_to_be_clickable((by, sel)))
-            box.click()
+            box = WebDriverWait(driver, 5).until(EC.presence_of_element_located((by, sel)))
+
+            # scroll ke tengah layar
+            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", box)
+            time.sleep(0.5)
+
+            # cek apakah terlihat di viewport
+            is_visible = driver.execute_script("""
+                const box = arguments[0];
+                const rect = box.getBoundingClientRect();
+                return (
+                    rect.top >= 0 &&
+                    rect.left >= 0 &&
+                    rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) &&
+                    rect.right <= (window.innerWidth || document.documentElement.clientWidth)
+                );
+            """, box)
+
+            if not is_visible:
+                driver.execute_script("window.scrollBy(0, -300);")
+                time.sleep(0.5)
+
+            try:
+                box.click()
+            except Exception:
+                # fallback kalau ketutup
+                driver.execute_script("arguments[0].focus(); arguments[0].click();", box)
+
             return box
         except Exception:
             continue
-    box = WebDriverWait(driver, 5).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "div[role='textbox']")))
-    box.click()
+
+    # fallback terakhir cari textbox umum
+    box = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CSS_SELECTOR, "div[role='textbox']")))
+    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", box)
+    driver.execute_script("arguments[0].focus(); arguments[0].click();", box)
     return box
+
 
 def find_home_tweet_button(driver: webdriver.Chrome):
     for by, sel in HOME_TWEET_BUTTON_SELECTORS:
@@ -341,15 +372,15 @@ def send_tweet_on_home(driver: webdriver.Chrome, text: str) -> bool:
 
 def scroll_natural(driver):
     """
-    Scroll naik setelah tweet.
-    Kalau textbox masih ketutupan (nggak kelihatan di viewport), scroll lagi.
+    Scroll naik setelah tweet supaya textbox tetap kelihatan.
     """
     try:
-        # Cari textbox
         box = driver.find_element(By.CSS_SELECTOR, "div[role='textbox']")
-        
-        for _ in range(3):  # maksimal 3x coba naik
-            # Cek posisi textbox di layar
+        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", box)
+        time.sleep(0.5)
+
+        # kalau masih ketutupan, scroll naik lagi
+        for _ in range(3):
             is_visible = driver.execute_script("""
                 const box = arguments[0];
                 const rect = box.getBoundingClientRect();
@@ -358,17 +389,12 @@ def scroll_natural(driver):
                     rect.bottom <= (window.innerHeight || document.documentElement.clientHeight)
                 );
             """, box)
-
             if is_visible:
-                break  # textbox sudah kelihatan, stop scrolling
-
-            # Kalau belum kelihatan → scroll naik random
-            driver.execute_script("window.scrollBy(0, -300);")
-            time.sleep(random.uniform(0.5, 1.0))
-
+                break
+            driver.execute_script("window.scrollBy(0, -200);")
+            time.sleep(0.5)
     except Exception as e:
-        logging.warning(f"Gagal cek textbox saat scroll: {e}")
-
+        logging.warning(f"Gagal scroll_natural: {e}")
 
 
 
