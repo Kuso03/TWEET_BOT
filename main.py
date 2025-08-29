@@ -528,9 +528,14 @@ def main():
     wait_home_ready(driver, timeout=60)
 
     posted_now: List[str] = []
+    total = len(queue)  # total tweet di antrean
+    processed = 0       # counter tweet
+
     while queue:
         text = queue.pop(0)
-        logging.info(f"Posting: {text[:80]}...")
+        processed += 1
+        logging.info(f"[{processed}/{total}] Posting: {text[:80]}...")
+
         if send_tweet_on_home(driver, text):
             # scroll natural biar page nggak kebablasan turun
             scroll_natural(driver)
@@ -545,9 +550,8 @@ def main():
             save_queue(queue)
             rand_delay(*DELAY_TWEET_RANGE)
 
-
     driver.quit()
-    logging.info("Selesai semua antrean.")
+    logging.info("Tweet Selesai !!! 🎉")
 
 if __name__ == "__main__":
     main()
